@@ -105,7 +105,7 @@ def StokesDLPVel(r_source, r_target, density, epsilon_distance = 1e-10):
   return pvel
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def StokesSLPVelGrad(r_source, r_target, density, epsilon_distance = 1e-10):
   '''
   epsilon_distance = (default 1e-10) set elements to zero for 
@@ -257,7 +257,7 @@ def StokesDLPVelGrad(r_source, r_target, density, epsilon_distance = 1e-10):
   return pvelGrad
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def StokesSLPVelLaplacian(r_source, r_target, density, epsilon_distance = 1e-10):
   '''
   epsilon_distance = (default 1e-10) set elements to zero for 
@@ -270,16 +270,35 @@ def StokesSLPVelLaplacian(r_source, r_target, density, epsilon_distance = 1e-10)
   r_target = r_target.reshape(Ntarget, 3)
   density = density.reshape(Nsource, 4)
   pvelLaplacian = np.zeros((Ntarget, 7))
+  # pvelLaplacian_0 = np.zeros(Ntarget)
+  # pvelLaplacian_1 = np.zeros(Ntarget)
+  # pvelLaplacian_2 = np.zeros(Ntarget)
+  # pvelLaplacian_3 = np.zeros(Ntarget)
+  # pvelLaplacian_4 = np.zeros(Ntarget)
+  # pvelLaplacian_5 = np.zeros(Ntarget)
+  # pvelLaplacian_6 = np.zeros(Ntarget)
+
+  # Copy arrays
+  tx_vec = np.copy(r_target[:,0])
+  ty_vec = np.copy(r_target[:,1])
+  tz_vec = np.copy(r_target[:,2])
+  sx_vec = np.copy(r_source[:,0])
+  sy_vec = np.copy(r_source[:,1])
+  sz_vec = np.copy(r_source[:,2])
+  fx_vec = np.copy(density[:, 0])
+  fy_vec = np.copy(density[:, 1])
+  fz_vec = np.copy(density[:, 2])
+  TrD_vec = np.copy(density[:, 3])
 
   # Loop over targets
   for xn in prange(Ntarget):
-    tx = r_target[xn, 0] 
-    ty = r_target[xn, 1] 
-    tz = r_target[xn, 2] 
+    tx = tx_vec[xn] 
+    ty = ty_vec[xn] 
+    tz = tz_vec[xn] 
     for yn in range(Nsource):
-      sx = r_source[yn, 0]
-      sy = r_source[yn, 1]
-      sz = r_source[yn, 2]
+      sx = sx_vec[yn]
+      sy = sy_vec[yn]
+      sz = sz_vec[yn]
       x = sx - tx
       y = sy - ty
       z = sz - tz
@@ -287,28 +306,32 @@ def StokesSLPVelLaplacian(r_source, r_target, density, epsilon_distance = 1e-10)
       if r_norm < epsilon_distance:
         continue     
 
-      fx = density[yn, 0]
-      fy = density[yn, 1]
-      fz = density[yn, 2]
-      TrD = density[yn, 3]
+      fx = fx_vec[yn]
+      fy = fy_vec[yn]
+      fz = fz_vec[yn]
+      TrD = TrD_vec[yn]
 
-      pvelLaplacian[xn,0] += (fx * (-sx + tx) + fy * (-sy + ty) + fz * (-sz + tz)) / (4. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 1.5))
+      pvelLaplacian[xn,0] += (fx * (-sx + tx) + fy * (-sy + ty) + fz * (-sz + tz)) / (4. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 1.5))
+      pvelLaplacian[xn,1] += ((sx - tx) * (fz * sz + TrD + fy * (sy - ty) - fz * tz) + fx * (2 * sx*sx + sy*sy + sz*sz - 4 * sx * tx + 2 * tx*tx - 2 * sy * ty + ty*ty - 2 * sz * tz + tz*tz)) / (8. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 1.5))
+      pvelLaplacian[xn,2] += ((sy - ty) * (fz * sz + TrD + fx * (sx - tx) - fz * tz) + fy * (sx*sx + 2 * sy*sy + sz*sz - 2 * sx * tx + tx*tx - 4 * sy * ty + 2 * ty*ty - 2 * sz * tz + tz*tz)) / (8. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 1.5))
+      pvelLaplacian[xn,3] += ((fy * sy + TrD + fx * (sx - tx) - fy * ty) * (sz - tz) + fz * (sx*sx + sy*sy + 2 * sz*sz - 2 * sx * tx + tx*tx - 2 * sy * ty + ty*ty - 4 * sz * tz + 2 * tz*tz)) / (8. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 1.5))      
+      pvelLaplacian[xn,4] += (-3 * (sx - tx) * (fy * (sy - ty) + fz * (sz - tz)) + fx * (-2 * sx*sx + sy*sy + sz*sz + 4 * sx * tx - 2 * tx*tx - 2 * sy * ty + ty*ty - 2 * sz * tz + tz*tz)) / (4. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 2.5))
+      pvelLaplacian[xn,5] += (-3 * (sy - ty) * (fx * (sx - tx) + fz * (sz - tz)) + fy * (sx*sx - 2 * sy*sy + sz*sz - 2 * sx * tx + tx*tx + 4 * sy * ty - 2 * ty*ty - 2 * sz * tz + tz*tz)) / (4. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 2.5))      
+      pvelLaplacian[xn,6] += (-3 * (fx * (sx - tx) + fy * (sy - ty)) * (sz - tz) + fz * (sx*sx + sy*sy - 2 * sz*sz - 2 * sx * tx + tx*tx - 2 * sy * ty + ty*ty + 4 * sz * tz - 2 * tz*tz)) / (4. * np.pi * np.power((sx - tx)*(sx - tx) + (sy - ty)*(sy - ty) + (sz - tz)*(sz - tz), 2.5))
 
-      pvelLaplacian[xn,1] += ((sx - tx) * (fz * sz + TrD + fy * (sy - ty) - fz * tz) + fx * (2 * np.power(sx, 2) + np.power(sy, 2) + np.power(sz, 2) - 4 * sx * tx + 2 * np.power(tx, 2) - 2 * sy * ty + np.power(ty, 2) - 2 * sz * tz + np.power(tz, 2))) / (8. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 1.5))
 
-      pvelLaplacian[xn,2] += ((sy - ty) * (fz * sz + TrD + fx * (sx - tx) - fz * tz) + fy * (np.power(sx, 2) + 2 * np.power(sy, 2) + np.power(sz, 2) - 2 * sx * tx + np.power(tx, 2) - 4 * sy * ty + 2 * np.power(ty, 2) - 2 * sz * tz + np.power(tz, 2))) / (8. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 1.5))
-
-      pvelLaplacian[xn,3] += ((fy * sy + TrD + fx * (sx - tx) - fy * ty) * (sz - tz) + fz * (np.power(sx, 2) + np.power(sy, 2) + 2 * np.power(sz, 2) - 2 * sx * tx + np.power(tx, 2) - 2 * sy * ty + np.power(ty, 2) - 4 * sz * tz + 2 * np.power(tz, 2))) / (8. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 1.5))
-      
-      pvelLaplacian[xn,4] += (-3 * (sx - tx) * (fy * (sy - ty) + fz * (sz - tz)) + fx * (-2 * np.power(sx, 2) + np.power(sy, 2) + np.power(sz, 2) + 4 * sx * tx - 2 * np.power(tx, 2) - 2 * sy * ty + np.power(ty, 2) - 2 * sz * tz + np.power(tz, 2))) / (4. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 2.5))
-      pvelLaplacian[xn,5] += (-3 * (sy - ty) * (fx * (sx - tx) + fz * (sz - tz)) + fy * (np.power(sx, 2) - 2 * np.power(sy, 2) + np.power(sz, 2) - 2 * sx * tx + np.power(tx, 2) + 4 * sy * ty - 2 * np.power(ty, 2) - 2 * sz * tz + np.power(tz, 2))) / (4. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 2.5))
-      
-      pvelLaplacian[xn,6] += (-3 * (fx * (sx - tx) + fy * (sy - ty)) * (sz - tz) + fz * (np.power(sx, 2) + np.power(sy, 2) - 2 * np.power(sz, 2) - 2 * sx * tx + np.power(tx, 2) - 2 * sy * ty + np.power(ty, 2) + 4 * sz * tz - 2 * np.power(tz, 2))) / (4. * np.pi * np.power(np.power(sx - tx, 2) + np.power(sy - ty, 2) + np.power(sz - tz, 2), 2.5))
+  # pvelLaplacian[:,0] = pvelLaplacian_0[:]
+  # pvelLaplacian[:,1] = pvelLaplacian_1[:]
+  # pvelLaplacian[:,2] = pvelLaplacian_2[:]
+  # pvelLaplacian[:,3] = pvelLaplacian_3[:]
+  # pvelLaplacian[:,4] = pvelLaplacian_4[:]
+  # pvelLaplacian[:,5] = pvelLaplacian_5[:]
+  # pvelLaplacian[:,6] = pvelLaplacian_6[:]
 
   return pvelLaplacian
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def StokesDLPVelLaplacian(r_source, r_target, density, epsilon_distance = 1e-10):
   '''
   epsilon_distance = (default 1e-10) set elements to zero for 
